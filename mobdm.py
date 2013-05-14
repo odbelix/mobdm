@@ -10,6 +10,7 @@ import time
 import datetime
 from datetime import datetime
 
+
 #Global vars
 log_f = open('logs','a')
 Config = ConfigParser.ConfigParser()
@@ -117,6 +118,7 @@ def main():
 	global database
 	global images_path
 	global images
+	global datetime
 	# Create Argument Parser
 	parser = argparse.ArgumentParser(
 	formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -129,6 +131,8 @@ def main():
 	parser.add_argument("-c", help="Create rrdtools dbs",action="store_true")
 	parser.add_argument("-down", help="Insert bw down from 'iddevice,idplan,pathfile' args")
 	parser.add_argument("-up", help="Insert bw up from 'iddevice,idplan,pathfile' args")
+	parser.add_argument("-downrrd", help="Insert bw down from 'iddevice,idplan,pathfile' to rrd DB")
+	parser.add_argument("-uprrd", help="Insert bw up from 'iddevice,idplan,pathfile' to rrd DB")
 	parser.add_argument("-I", help="Create images png",action="store_true")
 	parser.add_argument("-i", help="Create images for one device")
 	parser.add_argument("-cd", help="Get Configutarion of devices",action="store_true")
@@ -215,7 +219,29 @@ def main():
 				for line in lines:
 					arr = line.split(",")
 					insertValues(table,iddevice,idplan,arr)				
+	elif args.downrrd:
+		print "update rrd down"
+		table = "mob_bwdown"
+		arguments = args.downrrd.split(",")
+		iddevice = arguments[0]
+		idplan = arguments[1]
+		locfile = arguments[2]
+		if checkFile(locfile) == False:
+			sys.exit('Error in file')
+		else:
+			FILEIN = open(locfile,"r+")
+			lines = FILEIN.readlines()
+			for line in lines:
+				arr = line.split(",")
+				date = datetime.strptime(arr[0], "%Y%m%d%H%M%S")
+				query = "select * from  mob_bwdown where datereg = '%s'" % date
+				result = selectValues(query)
+				if len(result) == 1:
+					#Result OK for update
 				
+		
+	elif args.uprrd:
+		print "update rrd up"
 	elif args.I:
 			print "create images for devices"
 			query = "select device,plan from mob_device_plan order by device asc"
@@ -233,7 +259,8 @@ def main():
 						"CDEF:avdown=d,1024,/",
 						"COMMENT:\\n",
 						"GPRINT:avdown:AVERAGE:Promedio Descarga\: %lf kilobits",
-						"COMMENT:\\n")
+						"COMMENT:\\n",
+						"COMMENT:Grafico creado %s" %(getCurrentTimeForImage()))
 						ret = rrdtool.graph("%snet-%s-%s-up%s.png"%(images_path,result[0],result[1],image),"--start","%s" % image,"-w 680","-h 200","--vertical-label=kilobits",
 						"--title","TITULO",
 						"DEF:d=net-%s-%s-up.rrd:up:AVERAGE" % (result[0],result[1]),
@@ -241,7 +268,8 @@ def main():
 						"CDEF:avup=d,1024,/",
 						"COMMENT:\\n",
 						"GPRINT:avup:AVERAGE:Promedio Carga\: %lf kilobits",
-						"COMMENT:\\n")			
+						"COMMENT:\\n",
+						"COMMENT:Grafico creado %s" %(getCurrentTimeForImage()))			
 			
 	elif args.i:
 			print "create images for one device %s" % args.i
@@ -260,7 +288,8 @@ def main():
 						"CDEF:avdown=d,1024,/",
 						"COMMENT:\\n",
 						"GPRINT:avdown:AVERAGE:Promedio Descarga\: %lf kilobits",
-						"COMMENT:\\n")
+						"COMMENT:\\n",
+						"COMMENT:Grafico creado %s" %(getCurrentTimeForImage()))
 						ret = rrdtool.graph("%snet-%s-%s.png"%(images_path,result[0],result[1]),"--start","%s" % image,"-w 680","-h 200","--vertical-label=kilobits",
 						"--title","TITULO",
 						"DEF:d=net-%s-%s-up.rrd:up:AVERAGE" % (result[0],result[1]),
@@ -268,7 +297,8 @@ def main():
 						"CDEF:avup=d,1024,/",
 						"COMMENT:\\n",
 						"GPRINT:avup:AVERAGE:Promedio Carga\: %lf kilobits",
-						"COMMENT:\\n")
+						"COMMENT:\\n",
+						"COMMENT:Grafico creado %s" %(getCurrentTimeForImage()))
 
 	elif args.cd:
 			query = "select dev.id,dev.ipaddress,pla.id,pla.bwdown,pla.bwup from mob_device dev,mob_plan pla,mob_device_plan dp where dp.device = dev.id "
