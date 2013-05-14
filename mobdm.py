@@ -14,7 +14,7 @@ from datetime import datetime
 #Global vars
 log_f = open('logs','a')
 Config = ConfigParser.ConfigParser()
-images = ['-6h','-12h','-24h','-48h']
+images = ['-1h','-6h','-12h','-24h','-48h']
 databasefile = 'database.ini'
 database = {}
 configpath = ""
@@ -166,21 +166,23 @@ def main():
 		if results == False or len(results) == 0:
 			print "not exists relationship between device(id=%s) and plans" % (args.i)
 		else:
-			#Creating images
+			#Creating rrddb
 			for result in results:
-				db = "%snet-%s-%s-down.rrd" % (rrddb_path,result[0],result[1])
+				namedb="%snet-%s-%s-down.rrd" %(rrddb_path,result[0],result[1])
 				if os.path.exists(db) == False:
-					ret = rrdtool.create("%snet-%s-%s-down.rrd" %(rrddb_path,result[0],result[1]),"--step","3900","--start",'0',
-							"DS:down:GAUGE:5:%s:%s" % (str(0),str(result[2])),
+					 
+					ret = rrdtool.create(namedb,"--step","360","--start",'1368496511',
+							"DS:down:GAUGE:360:%s:%s" % (str(0),str(result[2])),
 							"RRA:AVERAGE:0.5:1:10000000",
 							"RRA:AVERAGE:0.5:6:10000000")
 				else:
 					print "DB-down exists"
 					
-				db = "%snet-%s-%s-up.rrd" % (rrddb_path,result[0],result[1])
+				namedb = "%snet-%s-%s-up.rrd" % (rrddb_path,result[0],result[1])
 				if os.path.exists(db) == False:
-					ret = rrdtool.create("%snet-%s-%s-up.rrd" %(rrddb_path,result[0],result[1]),"--step","3900","--start",'0',
-							"DS:up:GAUGE:5:%s:%s" % (str(0),str(result[3])),
+					
+					ret = rrdtool.create(namedb,"--start",'1368496511',"--step","360",
+							"DS:up:GAUGE:360:%s:%s" % (str(0),str(result[3])),
 							"RRA:AVERAGE:0.5:1:10000000",
 							"RRA:AVERAGE:0.5:6:10000000")
 				else:
@@ -234,14 +236,38 @@ def main():
 			for line in lines:
 				arr = line.split(",")
 				date = datetime.strptime(arr[0], "%Y%m%d%H%M%S")
-				query = "select * from  mob_bwdown where datereg = '%s'" % date
+				query = "select datereg,device,plan,bw from %s where datereg = '%s'" % (table,date)
 				result = selectValues(query)
 				if len(result) == 1:
 					#Result OK for update
-				
+					data = result[0]
+					print data[3]
+					info = '%snet-%s-%s-down.rrd' %(rrddb_path,data[1],data[2]),data[0].strftime('%s')+':' + str(data[3])
+					print info
+					ret = rrdtool.update('%snet-%s-%s-down.rrd' %(rrddb_path,data[1],data[2]),data[0].strftime('%s')+':' + str(data[3]));
 		
 	elif args.uprrd:
 		print "update rrd up"
+		print "update rrd down"
+		table = "mob_bwup"
+		arguments = args.uprrd.split(",")
+		iddevice = arguments[0]
+		idplan = arguments[1]
+		locfile = arguments[2]
+		if checkFile(locfile) == False:
+			sys.exit('Error in file')
+		else:
+			FILEIN = open(locfile,"r+")
+			lines = FILEIN.readlines()
+			for line in lines:
+				arr = line.split(",")
+				date = datetime.strptime(arr[0], "%Y%m%d%H%M%S")
+				query = "select datereg,device,plan,bw from %s where datereg = '%s'" % (table,date)
+				result = selectValues(query)
+				if len(result) == 1:
+					#Result OK for update
+					data = result[0]
+					ret = rrdtool.update('%snet-%s-%s-up.rrd' %(rrddb_path,data[1],data[2]),data[0].strftime('%s')+':' + str(data[3]));
 	elif args.I:
 			print "create images for devices"
 			query = "select device,plan from mob_device_plan order by device asc"
@@ -281,7 +307,7 @@ def main():
 				#Creating images
 				for result in results:
 					for image in images:						
-						ret = rrdtool.graph("%snet-%s-%s.png"%(images_path,result[0],result[1]),"--start","%s" % image,"-w 680","-h 200","--vertical-label=kilobits",
+						ret = rrdtool.graph("%snet-%s-%s-down%s.png"%(images_path,result[0],result[1],image),"--start","%s" % image,"-w 680","-h 200","--vertical-label=kilobits",
 						"--title","TITULO",
 						"DEF:d=net-%s-%s-down.rrd:down:AVERAGE" % (result[0],result[1]),
 						"AREA:d#00FF00:Ancho de Banda Descarga\\r",
@@ -290,7 +316,7 @@ def main():
 						"GPRINT:avdown:AVERAGE:Promedio Descarga\: %lf kilobits",
 						"COMMENT:\\n",
 						"COMMENT:Grafico creado %s" %(getCurrentTimeForImage()))
-						ret = rrdtool.graph("%snet-%s-%s.png"%(images_path,result[0],result[1]),"--start","%s" % image,"-w 680","-h 200","--vertical-label=kilobits",
+						ret = rrdtool.graph("%snet-%s-%s-up%s.png"%(images_path,result[0],result[1],image),"--start","%s" % image,"-w 680","-h 200","--vertical-label=kilobits",
 						"--title","TITULO",
 						"DEF:d=net-%s-%s-up.rrd:up:AVERAGE" % (result[0],result[1]),
 						"AREA:d#0332fc:Ancho de Banda Carga\\r",
