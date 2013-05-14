@@ -8,17 +8,19 @@ import ConfigParser
 import MySQLdb
 import time
 import datetime
-import matplotlib.pyplot as plt
-from matplotlib.pyplot import legend
 from datetime import datetime
 
 #Global vars
 log_f = open('logs','a')
 Config = ConfigParser.ConfigParser()
-images = ['-1h','-3h','-1d','-1w']
+images = ['-6h','-12h','-24h','-48h']
 databasefile = 'database.ini'
 database = {}
 configpath = ""
+#images_path = "/var/www/mobmetrics/images_plan/"
+#rrddb_path = "/opt/mobmetrics/rrddb/"
+images_path = ""
+rrddb_path = ""
 
 
 def checkFile(filename):
@@ -48,14 +50,16 @@ def getDataBaseInfo():
 		return True
 
 def insertValues(table,iddevice,idplan,arr):
-	if len(arr) == 14:
+	if len(arr) >= 9:
 		#timestamp -> string
 		date = arr[0]
-		query = "INSERT INTO %s(device,plan,datereg,ipsrc,portsrc,ipdst,portdst,idconn,ival,transfer,bw,jitter,lostdatagrams,totaldatagrams,percentlost,outdatagrams) values ('%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s')" %(table,iddevice,idplan,date,arr[1],arr[2],arr[3],arr[4],arr[5],arr[6],arr[7],arr[8],arr[9],arr[10],arr[11],arr[12],arr[13])
+		if len(arr) == 9:
+			query = "INSERT INTO %s(device,plan,datereg,ipsrc,portsrc,ipdst,portdst,idconn,ival,transfer,bw,jitter,lostdatagrams,totaldatagrams,percentlost,outdatagrams) values ('%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s')" %(table,iddevice,idplan,date,arr[1],arr[2],arr[3],arr[4],arr[5],arr[6],arr[7],arr[8],'0','0','0','0','0')
+		else:	
+			query = "INSERT INTO %s(device,plan,datereg,ipsrc,portsrc,ipdst,portdst,idconn,ival,transfer,bw,jitter,lostdatagrams,totaldatagrams,percentlost,outdatagrams) values ('%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s')" %(table,iddevice,idplan,date,arr[1],arr[2],arr[3],arr[4],arr[5],arr[6],arr[7],arr[8],arr[9],arr[10],arr[11],arr[12],arr[13])
 	else:
 		sys.exit('Not enough arguments')
-	
-	
+		
 	getDataBaseInfo()
 	db = MySQLdb.connect(database['host'],database['user'],database['password'],database['name'])
 	cursor = db.cursor()
@@ -111,6 +115,8 @@ def getListDevices():
 def main():
 	
 	global database
+	global images_path
+	global images
 	# Create Argument Parser
 	parser = argparse.ArgumentParser(
 	formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -120,6 +126,7 @@ def main():
 	
 	#Set arguments
 	parser.add_argument("-l", help="List of devices and plans",action="store_true")
+	parser.add_argument("-c", help="Create rrdtools dbs",action="store_true")
 	parser.add_argument("-down", help="Insert bw down from 'iddevice,idplan,pathfile' args")
 	parser.add_argument("-up", help="Insert bw up from 'iddevice,idplan,pathfile' args")
 	parser.add_argument("-I", help="Create images png",action="store_true")
@@ -127,6 +134,8 @@ def main():
 	parser.add_argument("-cd", help="Get Configutarion of devices",action="store_true")
 	parser.add_argument("-db", help="Get database information",action="store_true")
 	parser.add_argument("-query", help="Execute query")
+	parser.add_argument("-x", help="Execute query",action="store_true")
+	
 	
 	#Parse argv to args 
 	args = parser.parse_args()
@@ -147,7 +156,32 @@ def main():
 			for result in results:
 				print "%s\t%s\t%s\t" % (result[0],result[1],result[2])
 			print "\t\t--------------------\n"
-			
+	elif args.c:
+		query = "select db.device,db.plan,p.bwdown,p.bwup from mob_device_plan db,mob_plan p where db.plan = p.id order by db.device"
+		results = selectValues(query)
+		if results == False or len(results) == 0:
+			print "not exists relationship between device(id=%s) and plans" % (args.i)
+		else:
+			#Creating images
+			for result in results:
+				db = "%snet-%s-%s-down.rrd" % (rrddb_path,result[0],result[1])
+				if os.path.exists(db) == False:
+					ret = rrdtool.create("%snet-%s-%s-down.rrd" %(rrddb_path,result[0],result[1]),"--step","3900","--start",'0',
+							"DS:down:GAUGE:5:%s:%s" % (str(0),str(result[2])),
+							"RRA:AVERAGE:0.5:1:10000000",
+							"RRA:AVERAGE:0.5:6:10000000")
+				else:
+					print "DB-down exists"
+					
+				db = "%snet-%s-%s-up.rrd" % (rrddb_path,result[0],result[1])
+				if os.path.exists(db) == False:
+					ret = rrdtool.create("%snet-%s-%s-up.rrd" %(rrddb_path,result[0],result[1]),"--step","3900","--start",'0',
+							"DS:up:GAUGE:5:%s:%s" % (str(0),str(result[3])),
+							"RRA:AVERAGE:0.5:1:10000000",
+							"RRA:AVERAGE:0.5:6:10000000")
+				else:
+					print "DB-up exists"
+				
 	elif args.down:
 			print "insert down"
 			table = "mob_bwdown"
@@ -183,44 +217,59 @@ def main():
 					insertValues(table,iddevice,idplan,arr)				
 				
 	elif args.I:
-			print "Create images"
-	elif args.i:
-			print "create images for one device"
-			query = "select datereg,bw from mob_bwdown where device=1 and plan=2 order by datereg"
+			print "create images for devices"
+			query = "select device,plan from mob_device_plan order by device asc"
 			results = selectValues(query)
-			dates = []
-			values = []
-			i = 1
-			for element in results:
-					#dates.append(element[0])
-					dates.append(i)
-					i+=1
-					if element[1] == '':
-						values.append(0)
-					else:
-						values.append(int(element[1]))
-					
-			print dates
-			print values
+			if results == False or len(results) == 0:
+				print "not exists relationship between device(id=%s) and plans" % (args.i)
+			else:
+				#Creating images
+				for result in results:
+					for image in images:						
+						ret = rrdtool.graph("%snet-%s-%s-down%s.png"%(images_path,result[0],result[1],image),"--start","%s" % image,"-w 680","-h 200","--vertical-label=kilobits",
+						"--title","TITULO",
+						"DEF:d=net-%s-%s-down.rrd:down:AVERAGE" % (result[0],result[1]),
+						"AREA:d#00FF00:Ancho de Banda Descarga\\r",
+						"CDEF:avdown=d,1024,/",
+						"COMMENT:\\n",
+						"GPRINT:avdown:AVERAGE:Promedio Descarga\: %lf kilobits",
+						"COMMENT:\\n")
+						ret = rrdtool.graph("%snet-%s-%s-up%s.png"%(images_path,result[0],result[1],image),"--start","%s" % image,"-w 680","-h 200","--vertical-label=kilobits",
+						"--title","TITULO",
+						"DEF:d=net-%s-%s-up.rrd:up:AVERAGE" % (result[0],result[1]),
+						"AREA:d#0332fc:Ancho de Banda Carga\\r",
+						"CDEF:avup=d,1024,/",
+						"COMMENT:\\n",
+						"GPRINT:avup:AVERAGE:Promedio Carga\: %lf kilobits",
+						"COMMENT:\\n")			
 			
-			#p1, = plt.plot([1,2,3,4], [800,900,950,1020], '-bo')
-			p1, = plt.plot([1,2,3,4],values[5:9], '-bo')
-			#p2, = plt.plot([1,2,3,4], [512,457,500,375], '-go')
+	elif args.i:
+			print "create images for one device %s" % args.i
+			query = "select device,plan from mob_device_plan where device = %s order by plan asc" % args.i
+			results = selectValues(query)
+			if results == False or len(results) == 0:
+				print "not exists relationship between device(id=%s) and plans" % (args.i)
+			else:
+				#Creating images
+				for result in results:
+					for image in images:						
+						ret = rrdtool.graph("%snet-%s-%s.png"%(images_path,result[0],result[1]),"--start","%s" % image,"-w 680","-h 200","--vertical-label=kilobits",
+						"--title","TITULO",
+						"DEF:d=net-%s-%s-down.rrd:down:AVERAGE" % (result[0],result[1]),
+						"AREA:d#00FF00:Ancho de Banda Descarga\\r",
+						"CDEF:avdown=d,1024,/",
+						"COMMENT:\\n",
+						"GPRINT:avdown:AVERAGE:Promedio Descarga\: %lf kilobits",
+						"COMMENT:\\n")
+						ret = rrdtool.graph("%snet-%s-%s.png"%(images_path,result[0],result[1]),"--start","%s" % image,"-w 680","-h 200","--vertical-label=kilobits",
+						"--title","TITULO",
+						"DEF:d=net-%s-%s-up.rrd:up:AVERAGE" % (result[0],result[1]),
+						"AREA:d#0332fc:Ancho de Banda Carga\\r",
+						"CDEF:avup=d,1024,/",
+						"COMMENT:\\n",
+						"GPRINT:avup:AVERAGE:Promedio Carga\: %lf kilobits",
+						"COMMENT:\\n")
 
-
-			plt.title('Ancho de Banda')
-			#text,fontsize,color
-			plt.ylabel('Kbps',fontsize=12,color='black')
-			plt.xlabel('Mediciones')
-			plt.grid(True)
-			legend([p1], ["Descarga"],loc=4)
-
-			#xmin,xmax,ymix,ymax
-			plt.axis([0, 10, min(values),max(values)])
-			#save in image
-			plt.savefig('example-pyplot-3.png')
-						
-			
 	elif args.cd:
 			query = "select dev.id,dev.ipaddress,pla.id,pla.bwdown,pla.bwup from mob_device dev,mob_plan pla,mob_device_plan dp where dp.device = dev.id "
 			query += " and dp.plan = pla.id order by dev.id"
@@ -248,6 +297,21 @@ def main():
 			else:
 				for result in results:
 					print result
+	elif args.x:
+		query = "select datereg,bw from mob_bwdown order by datereg asc"
+		results = selectValues(query)
+		
+		ret = rrdtool.create("test-datetime-to-timestamp.rrd","--start",'1367322328',
+						"DS:down:GAUGE:960:0:1048576",
+						"RRA:AVERAGE:0.5:1:10000000",
+						"RRA:AVERAGE:0.5:6:10000000")
+		
+		for result in results:
+				datetime = result[0]
+				update_data = datetime.strftime('%s')+':' + str(result[1])
+				print update_data
+				ret = rrdtool.update('test-datetime-to-timestamp.rrd',datetime.strftime('%s')+':' + str(result[1]));
+				#print "%s %s" % (datetime.strftime('%s'),result[1])
 				
 	else:
 		#No set any argument
