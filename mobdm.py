@@ -12,10 +12,10 @@ from datetime import datetime
 
 
 #Global vars
-log_f = open('logs','a')
 Config = ConfigParser.ConfigParser()
 images = ['-1h','-6h','-12h','-24h','-48h']
 databasefile = 'database.ini'
+#databasefile = '/opt/mobmetrics/bin/database.ini'
 database = {}
 configpath = ""
 #images_path = "/var/www/mobmetrics/images_plan/"
@@ -373,7 +373,6 @@ def main():
 		#No set any argument
 		parser.print_help()
 	
-	log_f.close()
 #end main	
 	
 #Main
