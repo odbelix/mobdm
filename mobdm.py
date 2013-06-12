@@ -1,4 +1,10 @@
 #!/usr/bin/env python
+########################################################################
+#
+# Author:: Manuel Moscoso <mmoscoso@mobiquos.cl>
+#
+# Copyright 2013, Mobiquos LTDA
+########################################################################
 import sys
 import argparse
 import os
@@ -13,10 +19,15 @@ from datetime import datetime
 
 #Global vars
 Config = ConfigParser.ConfigParser()
+#Format type for images
 images = ['-1h','-6h','-12h','-24h','-48h']
+
+#File with database info
 databasefile = 'database.ini'
 #databasefile = '/opt/mobmetrics/bin/database.ini'
 database = {}
+
+#Config paths
 configpath = ""
 #images_path = "/var/www/mobmetrics/images_plan/"
 #rrddb_path = "/opt/mobmetrics/rrddb/"
@@ -24,6 +35,7 @@ images_path = ""
 rrddb_path = ""
 
 
+#Check if file exists
 def checkFile(filename):
 	if os.path.exists(filename) == False :
 		print "File not exists"
@@ -34,7 +46,9 @@ def checkFile(filename):
 			return False
 		else:
 			return True
-
+			
+			
+#Get database information from file
 def getDataBaseInfo():
 	global databasefile
 	data = ConfigParser.ConfigParser()
@@ -43,6 +57,7 @@ def getDataBaseInfo():
 		return False
 	else:
 		data.read(databasefile)
+		#Put values to array
 		database.update({'host':data.get('database','host')})
 		database.update({'name':data.get('database','name')})
 		database.update({'user':data.get('database','user')})
@@ -50,6 +65,8 @@ def getDataBaseInfo():
 		database.update({'prefix':data.get('database','prefix')})
 		return True
 
+
+# Insert values of "arr" in "table"
 def insertValues(table,iddevice,idplan,arr):
 	if len(arr) >= 9:
 		#timestamp -> string
@@ -73,6 +90,8 @@ def insertValues(table,iddevice,idplan,arr):
 		print "An error has been passed. %s" %e
 		return False
 
+
+#Execute query
 def selectValues(query):
 	getDataBaseInfo()
 	db = MySQLdb.connect(database['host'],database['user'],database['password'],database['name'])
@@ -85,40 +104,27 @@ def selectValues(query):
 		print "An error has been passed. %s" %e
 		return False
 
-def getDevicesFromConfigFile():
-	global Config
-	if os.path.exists('config.ini') == False:
-			print "ERROR: config.ini not exists"
-			return False
-	else:
-		Config.read('config.ini')
-		sections = Config.sections()
-	
-	return sections
-
+#Get current time to incorporate in Images
 def getCurrentTimeForImage():
 	current = datetime.now()
 	scurrent = current.strftime("%d/%m/%y %H-%M")
 	return scurrent
 
+#Get current time
 def getCurrentTime():
 	current = datetime.now()
 	scurrent = current.strftime("%d/%m/%y %H-%M")+"\t:"
 	return scurrent
 
-def getListDevices():
-	global Config
-	devices = getDevicesFromConfigFile()
-	for device in devices:
-		print device.rstrip('\n')
-#end getListDevices
-
+#Main
 def main():
 	
+	#Global variables
 	global database
 	global images_path
 	global images
 	global datetime
+	
 	# Create Argument Parser
 	parser = argparse.ArgumentParser(
 	formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -144,7 +150,12 @@ def main():
 	#Parse argv to args 
 	args = parser.parse_args()
 
+
+	#Workflow for arguments selection
+	#
+	#List of devices
 	if args.l:
+		
 			query = "select id,name,ipaddress,mac from mob_device order by id"
 			results = selectValues(query)
 			print "Devices:"
@@ -160,6 +171,8 @@ def main():
 			for result in results:
 				print "%s\t%s\t%s\t" % (result[0],result[1],result[2])
 			print "\t\t--------------------\n"
+	
+	#Create rrd Databases
 	elif args.c:
 		query = "select db.device,db.plan,p.bwdown,p.bwup from mob_device_plan db,mob_plan p where db.plan = p.id order by db.device"
 		results = selectValues(query)
@@ -187,14 +200,19 @@ def main():
 							"RRA:AVERAGE:0.5:6:10000000")
 				else:
 					print "DB-up exists"
-				
+					
+					
+	#Insert bandwidth down values in database
 	elif args.down:
 			print "insert down"
 			table = "mob_bwdown"
+			
+			#args.down = iddevice,idplan,localization of file
 			arguments = args.down.split(",")
 			iddevice = arguments[0]
 			idplan = arguments[1]
 			locfile = arguments[2]
+			
 			if checkFile(locfile) == False:
 				sys.exit('Error in file')
 			else:
@@ -204,14 +222,19 @@ def main():
 				for line in lines:
 					arr = line.split(",")
 					insertValues(table,iddevice,idplan,arr)
-
+					
+					
+	#Insert bandwidth down values in database
 	elif args.up:
 			print "insert up"
 			table = "mob_bwup"
+			
+			# args.up = = iddevice,idplan,localization of file
 			arguments = args.up.split(",")
 			iddevice = arguments[0]
 			idplan = arguments[1]
 			locfile = arguments[2]
+			
 			if checkFile(locfile) == False:
 				sys.exit('Error in file')
 			else:
@@ -221,6 +244,8 @@ def main():
 				for line in lines:
 					arr = line.split(",")
 					insertValues(table,iddevice,idplan,arr)				
+	
+	#Update rrd database for BW-down
 	elif args.downrrd:
 		print "update rrd down"
 		table = "mob_bwdown"
@@ -246,6 +271,7 @@ def main():
 					print info
 					ret = rrdtool.update('%snet-%s-%s-down.rrd' %(rrddb_path,data[1],data[2]),data[0].strftime('%s')+':' + str(data[3]));
 		
+	#Update rrd database for BW-up
 	elif args.uprrd:
 		print "update rrd up"
 		print "update rrd down"
@@ -268,6 +294,9 @@ def main():
 					#Result OK for update
 					data = result[0]
 					ret = rrdtool.update('%snet-%s-%s-up.rrd' %(rrddb_path,data[1],data[2]),data[0].strftime('%s')+':' + str(data[3]));
+	
+	
+	#Create images for all devices 
 	elif args.I:
 			print "create images for devices"
 			query = "select device,plan from mob_device_plan order by device asc"
@@ -296,7 +325,8 @@ def main():
 						"GPRINT:avup:AVERAGE:Promedio Carga\: %lf kilobits",
 						"COMMENT:\\n",
 						"COMMENT:Grafico creado %s" %(getCurrentTimeForImage()))			
-			
+	
+	#Create images for one devices		
 	elif args.i:
 			print "create images for one device %s" % args.i
 			query = "select device,plan from mob_device_plan where device = %s order by plan asc" % args.i
@@ -326,6 +356,7 @@ def main():
 						"COMMENT:\\n",
 						"COMMENT:Grafico creado %s" %(getCurrentTimeForImage()))
 
+	#Get configuration information for "RUNMETER"
 	elif args.cd:
 			query = "select dev.id,dev.ipaddress,pla.id,pla.bwdown,pla.bwup from mob_device dev,mob_plan pla,mob_device_plan dp where dp.device = dev.id "
 			query += " and dp.plan = pla.id order by dev.id"
@@ -333,6 +364,9 @@ def main():
 			print "iddevice,ip,idplan,bwdown,bwup"
 			for result in results:
 				print "%s,%s,%s,%s,%s" % (result[0],result[1],result[2],result[3],result[4])
+	
+	
+	#Get configuration information for "RUNMETER"
 	elif args.db:
 		if(getDataBaseInfo()):
 			print "Database information\n"
@@ -345,7 +379,9 @@ def main():
 				datas = selectValues("desc %s" % result[0])
 				for data in datas:
 					print data
-				print 
+				print
+				
+	#Execute a particular QUERY
 	elif args.query:
 			results = selectValues(args.query)
 			if results == False:
@@ -353,6 +389,8 @@ def main():
 			else:
 				for result in results:
 					print result
+					
+	
 	elif args.x:
 		query = "select datereg,bw from mob_bwdown order by datereg asc"
 		results = selectValues(query)
