@@ -20,7 +20,7 @@ from datetime import datetime
 #Global vars
 Config = ConfigParser.ConfigParser()
 #Format type for images
-images = ['-1h','-6h','-12h','-24h','-48h']
+images = ['-6h','-12h','-24h','-48h']
 
 #File with database info
 databasefile = 'database.ini'
@@ -361,7 +361,7 @@ def main():
 			query = "select dev.id,dev.ipaddress,pla.id,pla.bwdown,pla.bwup from mob_device dev,mob_plan pla,mob_device_plan dp where dp.device = dev.id "
 			query += " and dp.plan = pla.id order by dev.id"
 			results = selectValues(query)
-			print "iddevice,ip,idplan,bwdown,bwup"
+			#print "iddevice,ip,idplan,bwdown,bwup"
 			for result in results:
 				print "%s,%s,%s,%s,%s" % (result[0],result[1],result[2],result[3],result[4])
 	
