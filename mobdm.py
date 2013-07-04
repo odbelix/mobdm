@@ -15,6 +15,7 @@ import MySQLdb
 import time
 import datetime
 from datetime import datetime
+from datetime import timedelta
 
 
 #Global vars
@@ -32,7 +33,7 @@ configpath = ""
 #images_path = "/var/www/mobmetrics/images_plan/"
 #rrddb_path = "/opt/mobmetrics/rrddb/"
 images_path = ""
-rrddb_path = ""
+rrddb_path = "rrddb/"
 
 
 #Check if file exists
@@ -137,14 +138,13 @@ def main():
 	parser.add_argument("-c", help="Create rrdtools dbs",action="store_true")
 	parser.add_argument("-down", help="Insert bw down from 'iddevice,idplan,pathfile' args")
 	parser.add_argument("-up", help="Insert bw up from 'iddevice,idplan,pathfile' args")
-	parser.add_argument("-downrrd", help="Insert bw down from 'iddevice,idplan,pathfile' to rrd DB")
+	parser.add_argument("-downrrd", help="Insert bw down from 'iddevice,idplan,pathfile' to rrd DB",action="store_true")
 	parser.add_argument("-uprrd", help="Insert bw up from 'iddevice,idplan,pathfile' to rrd DB")
 	parser.add_argument("-I", help="Create images png",action="store_true")
 	parser.add_argument("-i", help="Create images for one device")
 	parser.add_argument("-cd", help="Get Configutarion of devices",action="store_true")
 	parser.add_argument("-db", help="Get database information",action="store_true")
 	parser.add_argument("-query", help="Execute query")
-	parser.add_argument("-x", help="Execute query",action="store_true")
 	
 	
 	#Parse argv to args 
@@ -174,32 +174,45 @@ def main():
 	
 	#Create rrd Databases
 	elif args.c:
-		query = "select db.device,db.plan,p.bwdown,p.bwup from mob_device_plan db,mob_plan p where db.plan = p.id order by db.device"
+		query = "select id,bwdown,bwup from mob_plan order by id"
 		results = selectValues(query)
+		
+		#Date to start DB
+		datestart = datetime(2013,1,1,0,0)
+		start = datestart.strftime('%s')
+		dateend = datetime(2013,6,17,0,0)
+		print datestart.strftime('%s')
+		print dateend.strftime('%s')
+		
 		if results == False or len(results) == 0:
-			print "not exists relationship between device(id=%s) and plans" % (args.i)
+			print "not exists plans"
 		else:
-			#Creating rrddb
+			#Check directory for rrddb
+			if not os.path.exists(rrddb_path):
+				print "Creating directory for rrddb"
+				os.makedirs(rrddb_path)	
+				
+			#Creating rrddb		
 			for result in results:
-				namedb="%snet-%s-%s-down.rrd" %(rrddb_path,result[0],result[1])
-				if os.path.exists(db) == False:
-					 
-					ret = rrdtool.create(namedb,"--step","360","--start",'1368496511',
-							"DS:down:GAUGE:360:%s:%s" % (str(0),str(result[2])),
-							"RRA:AVERAGE:0.5:1:10000000",
-							"RRA:AVERAGE:0.5:6:10000000")
+				namedb="%snet-%s-%s-%s-down.rrd" %(rrddb_path,result[0],result[1],result[2])
+				if os.path.exists(namedb) == False:
+					print "Creating %s" % namedb
+					maxdown = str(int(result[1])*1024)
+					ret = rrdtool.create(namedb,"--step","3600","--start",'%s' % start,
+							"DS:down:GAUGE:360:%s:%s" % (str(0),maxdown),
+							"RRA:AVERAGE:0.5:1:10000000")
 				else:
-					print "DB-down exists"
+					print "ERROR: DB %s exists" % namedb
 					
-				namedb = "%snet-%s-%s-up.rrd" % (rrddb_path,result[0],result[1])
-				if os.path.exists(db) == False:
-					
-					ret = rrdtool.create(namedb,"--start",'1368496511',"--step","360",
-							"DS:up:GAUGE:360:%s:%s" % (str(0),str(result[3])),
-							"RRA:AVERAGE:0.5:1:10000000",
-							"RRA:AVERAGE:0.5:6:10000000")
+				namedb = "%snet-%s-%s-%s-up.rrd" % (rrddb_path,result[0],result[1],result[2])
+				if os.path.exists(namedb) == False:	
+					print "Creating %s" % namedb
+					maxup = str(int(result[2])*1024)
+					ret = rrdtool.create(namedb,"--step","3600","--start",'%s' % start,
+							"DS:up:GAUGE:360:%s:%s" % (str(0),maxup),
+							"RRA:AVERAGE:0.5:1:10000000")
 				else:
-					print "DB-up exists"
+					print "ERROR: DB %s exists" % namedb
 					
 					
 	#Insert bandwidth down values in database
@@ -247,29 +260,32 @@ def main():
 	
 	#Update rrd database for BW-down
 	elif args.downrrd:
-		print "update rrd down"
-		table = "mob_bwdown"
-		arguments = args.downrrd.split(",")
-		iddevice = arguments[0]
-		idplan = arguments[1]
-		locfile = arguments[2]
-		if checkFile(locfile) == False:
-			sys.exit('Error in file')
+		#Get al plans
+		query = "select id,bwdown,bwup from mob_plan order by id"
+		results = selectValues(query)
+		datework = datetime.now() + timedelta(hours=1)
+		
+		#dnow = datenow.strftime('%Y-%m-%d% H')
+		#print datenow
+		#print datework
+		#print datenow.strftime('%s')
+		#Format YYYYmmddHmmss
+		#print datenow.strftime('%Y%m%d%H0000')
+		
+		if results == False or len(results) == 0:
+			print "not exists plans"
 		else:
-			FILEIN = open(locfile,"r+")
-			lines = FILEIN.readlines()
-			for line in lines:
-				arr = line.split(",")
-				date = datetime.strptime(arr[0], "%Y%m%d%H%M%S")
-				query = "select datereg,device,plan,bw from %s where datereg = '%s'" % (table,date)
-				result = selectValues(query)
-				if len(result) == 1:
-					#Result OK for update
-					data = result[0]
-					print data[3]
-					info = '%snet-%s-%s-down.rrd' %(rrddb_path,data[1],data[2]),data[0].strftime('%s')+':' + str(data[3])
-					print info
-					ret = rrdtool.update('%snet-%s-%s-down.rrd' %(rrddb_path,data[1],data[2]),data[0].strftime('%s')+':' + str(data[3]));
+			for result in results:
+					namedb="%snet-%s-%s-%s-down.rrd" %(rrddb_path,result[0],result[1],result[2])
+					#query_plan = "select AVG(bw) from mob_bwdown where bw > 0 and plan = %s" % (result[0])
+					for i in range(0,6):
+						query_plan = "SELECT DATE_SUB('%s', INTERVAL %s HOUR),DATE_SUB('%s', INTERVAL %s HOUR)" % (datework.strftime('%Y-%m-%d %H'),str(i),datework.strftime('%Y-%m-%d %H'),str(i+1))
+						result_query = selectValues(query_plan)
+						if os.path.exists(namedb):
+							print query_plan
+							print result_query[0][0]," ",result_query[0][1]
+		
+		
 		
 	#Update rrd database for BW-up
 	elif args.uprrd:
@@ -389,23 +405,6 @@ def main():
 			else:
 				for result in results:
 					print result
-					
-	
-	elif args.x:
-		query = "select datereg,bw from mob_bwdown order by datereg asc"
-		results = selectValues(query)
-		
-		ret = rrdtool.create("test-datetime-to-timestamp.rrd","--start",'1367322328',
-						"DS:down:GAUGE:960:0:1048576",
-						"RRA:AVERAGE:0.5:1:10000000",
-						"RRA:AVERAGE:0.5:6:10000000")
-		
-		for result in results:
-				datetime = result[0]
-				update_data = datetime.strftime('%s')+':' + str(result[1])
-				print update_data
-				ret = rrdtool.update('test-datetime-to-timestamp.rrd',datetime.strftime('%s')+':' + str(result[1]));
-				#print "%s %s" % (datetime.strftime('%s'),result[1])
 				
 	else:
 		#No set any argument
