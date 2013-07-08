@@ -117,6 +117,13 @@ def getCurrentTime():
 	scurrent = current.strftime("%d/%m/%y %H-%M")+"\t:"
 	return scurrent
 
+def getNewDatetime(strdate):
+	outstrdate = datetime(int(strdate[0:4]),
+	int(strdate[4:6]),
+	int(strdate[6:8]),
+	int(strdate[8:10]),0)
+	return outstrdate
+
 #Main
 def main():
 	
@@ -139,7 +146,7 @@ def main():
 	parser.add_argument("-down", help="Insert bw down from 'iddevice,idplan,pathfile' args")
 	parser.add_argument("-up", help="Insert bw up from 'iddevice,idplan,pathfile' args")
 	parser.add_argument("-downrrd", help="Insert bw down from 'iddevice,idplan,pathfile' to rrd DB",action="store_true")
-	parser.add_argument("-uprrd", help="Insert bw up from 'iddevice,idplan,pathfile' to rrd DB")
+	parser.add_argument("-uprrd", help="Insert bw up from 'iddevice,idplan,pathfile' to rrd DB",action="store_true")
 	parser.add_argument("-I", help="Create images png",action="store_true")
 	parser.add_argument("-i", help="Create images for one device")
 	parser.add_argument("-cd", help="Get Configutarion of devices",action="store_true")
@@ -199,7 +206,7 @@ def main():
 					print "Creating %s" % namedb
 					maxdown = str(int(result[1])*1024)
 					ret = rrdtool.create(namedb,"--step","3600","--start",'%s' % start,
-							"DS:down:GAUGE:360:%s:%s" % (str(0),maxdown),
+							"DS:down:GAUGE:3600:%s:%s" % (str(0),maxdown),
 							"RRA:AVERAGE:0.5:1:10000000")
 				else:
 					print "ERROR: DB %s exists" % namedb
@@ -209,7 +216,7 @@ def main():
 					print "Creating %s" % namedb
 					maxup = str(int(result[2])*1024)
 					ret = rrdtool.create(namedb,"--step","3600","--start",'%s' % start,
-							"DS:up:GAUGE:360:%s:%s" % (str(0),maxup),
+							"DS:up:GAUGE:3600:%s:%s" % (str(0),maxup),
 							"RRA:AVERAGE:0.5:1:10000000")
 				else:
 					print "ERROR: DB %s exists" % namedb
@@ -260,10 +267,15 @@ def main():
 	
 	#Update rrd database for BW-down
 	elif args.downrrd:
+		print getCurrentTime()
+
 		#Get al plans
 		query = "select id,bwdown,bwup from mob_plan order by id"
 		results = selectValues(query)
+		#datework - Current hour + 1 hour.
 		datework = datetime.now() + timedelta(hours=1)
+		#strdatework - String for sql-query
+		strdatework = datework.strftime('%Y-%m-%d %H')
 		
 		#dnow = datenow.strftime('%Y-%m-%d% H')
 		#print datenow
@@ -276,41 +288,78 @@ def main():
 			print "not exists plans"
 		else:
 			for result in results:
+					#Get name of rrddb
 					namedb="%snet-%s-%s-%s-down.rrd" %(rrddb_path,result[0],result[1],result[2])
-					#query_plan = "select AVG(bw) from mob_bwdown where bw > 0 and plan = %s" % (result[0])
-					for i in range(0,6):
-						query_plan = "SELECT DATE_SUB('%s', INTERVAL %s HOUR),DATE_SUB('%s', INTERVAL %s HOUR)" % (datework.strftime('%Y-%m-%d %H'),str(i),datework.strftime('%Y-%m-%d %H'),str(i+1))
+					print "--->"
+					for i in range(6,0,-1):
+					#for i in range(0,6):
+						#query_plan = "SELECT AVG(bw) from mob_bwdown where datereg < DATE_SUB('%s', INTERVAL %s HOUR) and datereg > DATE_SUB('%s', INTERVAL %s HOUR) and plan = %s and bw > 0" % (strdatework,str(i),strdatework,str(i+1),result[0])
+						query_plan = "SELECT REPLACE(ROUND(AVG(bw),0),',','') from mob_bwdown where datereg < DATE_SUB('%s', INTERVAL %s HOUR) and datereg > DATE_SUB('%s', INTERVAL %s HOUR) and plan = %s and bw > 0" % (strdatework,str(i-1),strdatework,str(i),result[0])
+						#query_plan = "SELECT DATE_SUB('%s', INTERVAL %s HOUR),DATE_SUB('%s', INTERVAL %s HOUR)" % (strdatework,str(i-1),strdatework,str(i))
 						result_query = selectValues(query_plan)
+						
+						#datevalue - datetime for insert value on rrddb
+						datevalue = datework - timedelta(hours=i)
+						#strdate - String format of datevalue, this string has not min/sec values
+						strdate = datevalue.strftime('%Y%m%d%H0000')
+						
+						#Check if rrddb exists
 						if os.path.exists(namedb):
-							print query_plan
-							print result_query[0][0]," ",result_query[0][1]
-		
-		
-		
+							daterrd = getNewDatetime(strdate).strftime('%s')
+							bwvalue = str(result_query[0][0])
+							store_value = '%s:%s' % (daterrd,bwvalue)
+							if bwvalue != 'None':
+								print "rrdtool.update('%s','%s')  (namedb,store_value));" % (namedb,store_value)
+								try:
+									ret = rrdtool.update('%s' % str(namedb),'%s' % store_value) 
+								except:
+									print "ERROR: Already exists data for this date(%s)" % daterrd 
+									
+	
 	#Update rrd database for BW-up
 	elif args.uprrd:
-		print "update rrd up"
-		print "update rrd down"
-		table = "mob_bwup"
-		arguments = args.uprrd.split(",")
-		iddevice = arguments[0]
-		idplan = arguments[1]
-		locfile = arguments[2]
-		if checkFile(locfile) == False:
-			sys.exit('Error in file')
+		print getCurrentTime()
+		print datetime.now().strftime('%s')
+		
+		#Get al plans
+		query = "select id,bwdown,bwup from mob_plan order by id"
+		results = selectValues(query)
+		
+		#datework - Current hour + 1 hour.
+		datework = datetime.now() + timedelta(hours=1)
+		
+		#strdatework - String for sql-query
+		strdatework = datework.strftime('%Y-%m-%d %H')
+		
+		if results == False or len(results) == 0:
+			print "not exists plans"
 		else:
-			FILEIN = open(locfile,"r+")
-			lines = FILEIN.readlines()
-			for line in lines:
-				arr = line.split(",")
-				date = datetime.strptime(arr[0], "%Y%m%d%H%M%S")
-				query = "select datereg,device,plan,bw from %s where datereg = '%s'" % (table,date)
-				result = selectValues(query)
-				if len(result) == 1:
-					#Result OK for update
-					data = result[0]
-					ret = rrdtool.update('%snet-%s-%s-up.rrd' %(rrddb_path,data[1],data[2]),data[0].strftime('%s')+':' + str(data[3]));
-	
+			for result in results:
+					#Get name of rrddb
+					namedb="%snet-%s-%s-%s-up.rrd" %(rrddb_path,result[0],result[1],result[2])
+					print "--->"
+					for i in range(6,0,-1):
+						query_plan = "SELECT REPLACE(ROUND(AVG(bw),0),',','') from mob_bwup where datereg < DATE_SUB('%s', INTERVAL %s HOUR) and datereg > DATE_SUB('%s', INTERVAL %s HOUR) and plan = %s and bw > 0" % (strdatework,str(i-1),strdatework,str(i),result[0])
+						result_query = selectValues(query_plan)
+						
+						#datevalue - datetime for insert value on rrddb
+						datevalue = datework - timedelta(hours=i)
+						
+						#strdate - String format of datevalue, this string has not min/sec values
+						strdate = datevalue.strftime('%Y%m%d%H0000')
+						
+						#Check if rrddb exists
+						if os.path.exists(namedb):
+							daterrd = getNewDatetime(strdate).strftime('%s')
+							bwvalue = str(result_query[0][0])
+							store_value = '%s:%s' % (daterrd,bwvalue)
+							if bwvalue != 'None':
+								print "rrdtool.update('%s','%s')  (namedb,store_value));" % (namedb,store_value)
+								try:
+									ret = rrdtool.update('%s' % str(namedb),'%s' % store_value) 
+								except:
+									print "ERROR: Already exists data for this date(%s)" % daterrd 
+						
 	
 	#Create images for all devices 
 	elif args.I:
