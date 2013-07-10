@@ -16,12 +16,14 @@ import time
 import datetime
 from datetime import datetime
 from datetime import timedelta
+#For Reports
+from xlwt import Workbook,Borders,XFStyle
 
 
 #Global vars
 Config = ConfigParser.ConfigParser()
 #Format type for images
-images = ['-6h','-12h','-24h','-48h']
+images = ['6h','12h','24h','48h']
 
 #File with database info
 databasefile = 'database.ini'
@@ -32,8 +34,9 @@ database = {}
 configpath = ""
 #images_path = "/var/www/mobmetrics/images_plan/"
 #rrddb_path = "/opt/mobmetrics/rrddb/"
-images_path = ""
+images_path = "/home/manuel/www/mobmetrics/rrdimages/"
 rrddb_path = "rrddb/"
+reports_path = "reports/"
 
 
 #Check if file exists
@@ -130,6 +133,8 @@ def main():
 	#Global variables
 	global database
 	global images_path
+	global rrddb_path
+	global reports_path
 	global images
 	global datetime
 	
@@ -148,9 +153,9 @@ def main():
 	parser.add_argument("-downrrd", help="Insert bw down from 'iddevice,idplan,pathfile' to rrd DB",action="store_true")
 	parser.add_argument("-uprrd", help="Insert bw up from 'iddevice,idplan,pathfile' to rrd DB",action="store_true")
 	parser.add_argument("-I", help="Create images png",action="store_true")
-	parser.add_argument("-i", help="Create images for one device")
 	parser.add_argument("-cd", help="Get Configutarion of devices",action="store_true")
 	parser.add_argument("-db", help="Get database information",action="store_true")
+	parser.add_argument("-R", help="Create report for previous month",action="store_true")
 	parser.add_argument("-query", help="Execute query")
 	
 	
@@ -361,66 +366,45 @@ def main():
 									print "ERROR: Already exists data for this date(%s)" % daterrd 
 						
 	
-	#Create images for all devices 
+	#Create images for all plans
 	elif args.I:
-			print "create images for devices"
-			query = "select device,plan from mob_device_plan order by device asc"
+			print "create images for plans"
+			#Get al plans
+			query = "select id,bwdown,bwup from mob_plan order by id"
 			results = selectValues(query)
 			if results == False or len(results) == 0:
-				print "not exists relationship between device(id=%s) and plans" % (args.i)
+				print "not exists plans"
 			else:
-				#Creating images
+				#Check if directory exists
+				#Check directory for rrddb
+				if not os.path.exists(images_path):
+					print "Creating directory for images"
+					os.makedirs(images_path)
+				
 				for result in results:
-					for image in images:						
-						ret = rrdtool.graph("%snet-%s-%s-down%s.png"%(images_path,result[0],result[1],image),"--start","%s" % image,"-w 680","-h 200","--vertical-label=kilobits",
-						"--title","TITULO",
-						"DEF:d=net-%s-%s-down.rrd:down:AVERAGE" % (result[0],result[1]),
+					#Name of db
+					namedbdown="%snet-%s-%s-%s-down.rrd" %(rrddb_path,result[0],result[1],result[2])
+					namedbup="%snet-%s-%s-%s-up.rrd" %(rrddb_path,result[0],result[1],result[2])
+					for image in images:
+						nameimg = "%simg-%s-%s.png" % (images_path,result[0],image)
+						print "Creating %s DOWN/UP" % nameimg
+						ret = rrdtool.graph("%s" % nameimg,"--start","-%s" % image,"-w 680","-h 200","--vertical-label=kilobits",
+						'--imgformat', 'PNG',
+						"--title","PLAN %s - %s/%s (Pasadas %soras)" %(result[0],result[1],result[2],image),
+						"DEF:d=%s:down:AVERAGE" % (namedbdown),
+						"DEF:u=%s:up:AVERAGE" % (namedbup),
 						"AREA:d#00FF00:Ancho de Banda Descarga\\r",
+						"LINE:u#0000FF:Ancho de Banda Carga\\r",
 						"CDEF:avdown=d,1024,/",
+						"CDEF:avup=u,1024,/",
 						"COMMENT:\\n",
+						"GPRINT:avup:AVERAGE:Promedio Carga\: %4lf kilobits",
+						"COMMENT:  ",
 						"GPRINT:avdown:AVERAGE:Promedio Descarga\: %lf kilobits",
 						"COMMENT:\\n",
 						"COMMENT:Grafico creado %s" %(getCurrentTimeForImage()))
-						ret = rrdtool.graph("%snet-%s-%s-up%s.png"%(images_path,result[0],result[1],image),"--start","%s" % image,"-w 680","-h 200","--vertical-label=kilobits",
-						"--title","TITULO",
-						"DEF:d=net-%s-%s-up.rrd:up:AVERAGE" % (result[0],result[1]),
-						"AREA:d#0332fc:Ancho de Banda Carga\\r",
-						"CDEF:avup=d,1024,/",
-						"COMMENT:\\n",
-						"GPRINT:avup:AVERAGE:Promedio Carga\: %lf kilobits",
-						"COMMENT:\\n",
-						"COMMENT:Grafico creado %s" %(getCurrentTimeForImage()))			
 	
-	#Create images for one devices		
-	elif args.i:
-			print "create images for one device %s" % args.i
-			query = "select device,plan from mob_device_plan where device = %s order by plan asc" % args.i
-			results = selectValues(query)
-			if results == False or len(results) == 0:
-				print "not exists relationship between device(id=%s) and plans" % (args.i)
-			else:
-				#Creating images
-				for result in results:
-					for image in images:						
-						ret = rrdtool.graph("%snet-%s-%s-down%s.png"%(images_path,result[0],result[1],image),"--start","%s" % image,"-w 680","-h 200","--vertical-label=kilobits",
-						"--title","TITULO",
-						"DEF:d=net-%s-%s-down.rrd:down:AVERAGE" % (result[0],result[1]),
-						"AREA:d#00FF00:Ancho de Banda Descarga\\r",
-						"CDEF:avdown=d,1024,/",
-						"COMMENT:\\n",
-						"GPRINT:avdown:AVERAGE:Promedio Descarga\: %lf kilobits",
-						"COMMENT:\\n",
-						"COMMENT:Grafico creado %s" %(getCurrentTimeForImage()))
-						ret = rrdtool.graph("%snet-%s-%s-up%s.png"%(images_path,result[0],result[1],image),"--start","%s" % image,"-w 680","-h 200","--vertical-label=kilobits",
-						"--title","TITULO",
-						"DEF:d=net-%s-%s-up.rrd:up:AVERAGE" % (result[0],result[1]),
-						"AREA:d#0332fc:Ancho de Banda Carga\\r",
-						"CDEF:avup=d,1024,/",
-						"COMMENT:\\n",
-						"GPRINT:avup:AVERAGE:Promedio Carga\: %lf kilobits",
-						"COMMENT:\\n",
-						"COMMENT:Grafico creado %s" %(getCurrentTimeForImage()))
-
+	
 	#Get configuration information for "RUNMETER"
 	elif args.cd:
 			query = "select dev.id,dev.ipaddress,pla.id,pla.bwdown,pla.bwup from mob_device dev,mob_plan pla,mob_device_plan dp where dp.device = dev.id "
@@ -445,6 +429,87 @@ def main():
 				for data in datas:
 					print data
 				print
+	
+	#Create report for previous month
+	elif args.R:
+		#Get current date and Check if first of month
+		datenow = datetime.now()
+		datenow = datetime(2013,7,1)
+		if not datenow.day == 1:
+			sys.exit("!: It's not a day to do Reports :D")
+		
+		
+		#Creating report
+		namereport = (datenow + timedelta(hours=-24)).strftime("report_%Y_%m.xls")
+		#strdatework - String for sql-query
+		strdatework_end = (datenow + timedelta(hours=-24)).strftime('%Y-%m-%d')
+		strdatework_beg = (datenow + timedelta(hours=-24)).strftime('%Y-%m-01')
+			
+		#Check directory for reports
+		if not os.path.exists(reports_path):
+			print "Creating directory for reports"
+			os.makedirs(reports_path)
+			
+		#Check if report exists
+		pathreport = "%s%s" %(reports_path,namereport)
+		if os.path.exists(pathreport) == True:
+			sys.exit("!: Report (%s) already exists" % (pathreport))
+			
+		#Creack book - xls 
+		print "Creating ..."
+		book = Workbook(encoding='utf-8')
+		
+		#Get Plans
+		query = "select id,bwdown,bwup from mob_plan order by id"
+		results = selectValues(query)
+		if results == False or len(results) == 0:
+			print "not exists plans"
+		else:
+			for result in results:
+				newsheet = book.add_sheet('Plan%s' % (result[0]))
+				newsheet.col(1).width = 5000
+				newsheet.col(2).width = 5000
+				row3 = newsheet.row(3)
+				row3.write(1,'Ancho de Banda Nominal')
+				row3.write(2,'%s/%s Kbps' % (result[1],result[2]))
+				row4 = newsheet.row(4)
+				row4.write(1,'Fecha de Generacion')
+				row4.write(2,'%s' % (getCurrentTime()))
+				#General Info
+				newsheet.row(5).write(1,'Tecnologia')
+				newsheet.row(6).write(1,'Ubicacion/localidad')
+				newsheet.row(7).write(1,'Limite de descarga')
+				
+				#BW Average -DOWN
+				query_avg = "select datereg,REPLACE(ROUND(AVG(bw),0),',','') from mob_bwdown where plan = %s and datereg BETWEEN '%s' and '%s' group by DAY(datereg) order by datereg" % (result[0],strdatework_beg,strdatework_end)
+				results_avg = selectValues(query_avg)
+				newsheet.row(9).write(1,'Fecha')
+				newsheet.row(9).write(2,'Promedio AB - Descarga')
+				rowcont = 10
+				for avg in results_avg:
+					newsheet.row(rowcont).write(1,avg[0])
+					newsheet.row(rowcont).write(2,avg[1])
+					rowcont+=1
+				
+				#BW Average -DOWN
+				query_avg = "select datereg,REPLACE(ROUND(AVG(bw),0),',','') from mob_bwup where plan = %s and datereg BETWEEN '%s' and '%s' group by DAY(datereg) order by datereg" % (result[0],strdatework_beg,strdatework_end)
+				results_avg = selectValues(query_avg)
+				newsheet.row(9).write(4,'Fecha')
+				newsheet.row(9).write(5,'Promedio AB - Descarga')
+				rowcont = 10
+				for avg in results_avg:
+					newsheet.row(rowcont).write(4,avg[0])
+					newsheet.row(rowcont).write(5,avg[1])
+					rowcont+=1
+					
+					
+		try:		
+			book.save('%s' % (pathreport))
+			print "Report success: %s" % pathreport
+		except:
+			print "Error saving report"
+			
+		
 				
 	#Execute a particular QUERY
 	elif args.query:
