@@ -3,7 +3,7 @@
 #
 # Author:: Manuel Moscoso <mmoscoso@mobiquos.cl>
 #
-# Copyright 2013, Mobiquos LTDA
+# Copyright 2013-07, Mobiquos LTDA
 ########################################################################
 import sys
 import argparse
@@ -32,8 +32,9 @@ database = {}
 
 #Config paths
 configpath = ""
-#images_path = "/var/www/mobmetrics/images_plan/"
-#rrddb_path = "/opt/mobmetrics/rrddb/"
+images_path = "/var/www/rrdimages/"
+rrddb_path = "/var/www/rrddb/"
+reports_path = "/var/www/reports/"
 images_path = "/home/manuel/www/mobmetrics/rrdimages/"
 rrddb_path = "rrddb/"
 reports_path = "reports/"
@@ -190,7 +191,7 @@ def main():
 		results = selectValues(query)
 		
 		#Date to start DB
-		datestart = datetime(2013,1,1,0,0)
+		datestart = datetime(2013,7,1,0,0)
 		start = datestart.strftime('%s')
 		dateend = datetime(2013,6,17,0,0)
 		print datestart.strftime('%s')
@@ -212,7 +213,7 @@ def main():
 					maxdown = str(int(result[1])*1024)
 					ret = rrdtool.create(namedb,"--step","3600","--start",'%s' % start,
 							"DS:down:GAUGE:3600:%s:%s" % (str(0),maxdown),
-							"RRA:AVERAGE:0.5:1:10000000")
+							"RRA:AVERAGE:0.5:1:720")
 				else:
 					print "ERROR: DB %s exists" % namedb
 					
@@ -222,7 +223,7 @@ def main():
 					maxup = str(int(result[2])*1024)
 					ret = rrdtool.create(namedb,"--step","3600","--start",'%s' % start,
 							"DS:up:GAUGE:3600:%s:%s" % (str(0),maxup),
-							"RRA:AVERAGE:0.5:1:10000000")
+							"RRA:AVERAGE:0.5:1:720")
 				else:
 					print "ERROR: DB %s exists" % namedb
 					
