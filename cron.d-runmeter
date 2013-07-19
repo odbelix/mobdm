@@ -1,0 +1,4 @@
+# /etc/cron.d/runmeter: crontab for MobMetrics
+# Get metrics every 30 minutes
+0 * * * *     root   /opt/mobmetrics/bin/runmeter.sh
+
