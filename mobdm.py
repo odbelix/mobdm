@@ -4,6 +4,7 @@
 # Author:: Manuel Moscoso <mmoscoso@mobiquos.cl>
 #
 # Copyright 2013-07, Mobiquos LTDA
+# Version 0.1.1
 ########################################################################
 import sys
 import argparse
@@ -486,21 +487,25 @@ def main():
 				results_avg = selectValues(query_avg)
 				newsheet.row(9).write(1,'Fecha')
 				newsheet.row(9).write(2,'Promedio AB - Descarga')
+				newsheet.row(9).write(3,'Promedio AB - Descarga (Kbps)')
 				rowcont = 10
 				for avg in results_avg:
-					newsheet.row(rowcont).write(1,avg[0])
+					newsheet.row(rowcont).write(1,avg[0].strftime('%Y-%m-%d'))
 					newsheet.row(rowcont).write(2,avg[1])
+					newsheet.row(rowcont).write(3,int(avg[1])/1024)
 					rowcont+=1
 				
 				#BW Average -DOWN
 				query_avg = "select datereg,REPLACE(ROUND(AVG(bw),0),',','') from mob_bwup where plan = %s and datereg BETWEEN '%s' and '%s' group by DAY(datereg) order by datereg" % (result[0],strdatework_beg,strdatework_end)
 				results_avg = selectValues(query_avg)
-				newsheet.row(9).write(4,'Fecha')
-				newsheet.row(9).write(5,'Promedio AB - Descarga')
+				newsheet.row(9).write(5,'Fecha')
+				newsheet.row(9).write(6,'Promedio AB - Descarga')
+				newsheet.row(9).write(7,'Promedio AB - Descarga (Kbps)')
 				rowcont = 10
 				for avg in results_avg:
-					newsheet.row(rowcont).write(4,avg[0])
-					newsheet.row(rowcont).write(5,avg[1])
+					newsheet.row(rowcont).write(5,avg[0].strftime('%Y-%m-%d'))
+					newsheet.row(rowcont).write(6,avg[1])
+					newsheet.row(rowcont).write(7,int(avg[1])/1024)
 					rowcont+=1
 					
 					
@@ -529,3 +534,4 @@ def main():
 	
 #Main
 if  __name__ =='__main__':main()
+
